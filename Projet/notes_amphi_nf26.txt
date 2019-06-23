@@ -1,0 +1,76 @@
+connexion au cluster possible uniquement sur serveur
+
+cqlsh
+//connect to NF26 cluster
+
+cqlsh> CREATE KEYSPACE jbleger_demo_cours WITH replication = {'class':'SimpleStrategy', 'replication_factor': 2};
+//création d'un keyspace
+//nb pour le projet, tous les keyspace doivent être précédés de notre login étudiant
+//facteur de réplication 2 signifie que la donnée est répliquée deux fois (stockée à 2 endroits (ici 2 noeuds))) 
+
+cqlsh> use jbleger_demo_cours;
+
+cqlsh:jbleger_demo_cours> CREATE TABLE impacttemporel(annee int, mois int, jour int, heure int, lat, float, dep text, region text, energie float, primary key((annee,mois), jour, heure, lat, lon) );
+//c'est du cassandra nb: différence majeure avec sql: contenu de la primary key, distinction entre clé de partitionnement et le reste
+//cle de partitionnement est ce qui se trouve en premier (entre parenthèses si plus d'un attribut dans la clé de partitionnement) dans primary key
+
+cqlsh:jbleger_demo_cours> CREATE TABLE impactgeo(annee int, mois int, jour int, heure int, lat, float, dep text, region text, energie float, primary key((annee,dep), mois, jour, heure, lat, lon) );
+//rouge: clé de partitionnement, bleu clé de tri, en violet les autres colonnes
+
+cqlsh:jbleger_demo_cours> insert into impactgeo (annee, mois, jour, heure, lat, lon, dep, energie) values (2019, 12, 1, 23, 48, 3, '75', 10);
+
+cqlsh:jbleger_demo_cours> select * from impactgeo;
+//nb: region contient null
+//nb: affichage renvoyé ressemble à une table mais ce n'est pas une table classique, c'est des magasins k/v , magasin contient valeur null (différent absence de valeur dans tables) (à vérifier..)
+
+ssh jbleger@nf26-3.leger.tf
+//connexion à un autre noeud
+
+cqlsh
+
+select * from impactgeo;
+
+//on trouve les mêmes données -> grâce à la réplication
+
+cqlsh:jbleger_demo_cours> insert into impactgeo (annee, mois, jour, heure, lat, lon, dep, energie) values (2019, 12, 1, 23, 48, 3, '75', 11);
+//on veut mettre l'énergie à 11, marche même si clé primaire existait déjà. En sql, ça ne marcherait pas car un tuple avec la clé primaire existe déjà. Ici, ça marche, et le comportement observé si ,la  
+//un enregistrement avec la même valeur pour la clé primaire existe déjà, est le même que si on avait fait un update --> la valeur de energie est mise à jour à 11.
+
+//si on change de noeud, on remarque que energie vaut 11
+
+cqlsh:jbleger_demo_cours> select * from impactgeo where energie>10;
+//erreur mais si on dit explicitement ALLOW FILTERING qui petmet de parcourir toutes les données(à utiliser qu'en cas de nécessité) ça marche , ne jamais utiliser ALLOW FILTERING sauf si justifiable
+cqlsh:jbleger_demo_cours> select * from impactgeo where energie>10 ALLOW FILTERING;
+
+cqlsh:jbleger_demo_cours> select * from impactgeo where annee=2019;
+//on interroge qu'une partie de la clé , il faut parcourir toutes les partitions donc il faut aussi mettre ALOW FILTERING pour que ça marche
+
+cqlsh:jbleger_demo_cours> select * from impactgeo where annee=2019 and dep='75';
+//ça marche ! (sans ALLOW FILTERING)
+
+cqlsh:jbleger_demo_cours> select * from impactgeo where annee=2019 and dep='75' and mois<12;
+//ça marche 
+
+cqlsh:jbleger_demo_cours> select * from impactgeo where annee=2019 and dep='75' and jour <12;
+//erreur car clés prises dans l'ordre mais on n'a pas de mois dans notre requête, pb on demande des données non consécutives
+//donc l'ordre de clé de tri est important
+
+//Ex si on veut récupérer tous les premiers jours des mois 
+01 01 <-
+   11
+   24
+   
+02 01 <-
+   11
+   24
+   
+03 01 <-
+   11
+   24
+   
+04 01 <-
+   11
+   24
+//pour y remédier on crée un autre stockage sans le mois par exemple pour trouver les premiers jours des mois    
+
+
