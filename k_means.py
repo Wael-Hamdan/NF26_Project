@@ -68,16 +68,16 @@ def compute_means(session, year, month, day1, day2):
     reducing = mapping.reduceByKey(lambda a,b: a+b)  
     result = reducing.map(calc_moy_key)
 
-    return result
+    return result.collect()
     
 
 means = np.array([.0]*4)
 stds = np.array([.0]*4)
 count = 0
 
-result = compute_means(session, Y, M, D1, D2)
+dataset = compute_means(session, Y, M, D1, D2)
 
-for r in result.collect():
+for r in dataset:
     count += 1
     means += r[1:]
     stds += np.power(r[1:],2)        
@@ -91,14 +91,14 @@ n_iter = 100    #number of iterations
 #initialize the cendtroids randomly from the data points
 centroids = np.zeros((K,n))
 
-for i,x in enumerate(limiteur(result.collect(), K)):
+for i,x in enumerate(limiteur(dataset, K)):
     centroids[i] = x[1:]
  
 for i in range(n_iter):
     new_centroids = np.zeros((K,n))
     counter = np.array([0]*K)
  
-    for x in result.collect():  
+    for x in dataset:  
         x_norm = (x[1:]-means)/stds
         eucli_dist = [.0]*K
         for k in range(K):
@@ -125,7 +125,7 @@ map.drawcoastlines()
 #map.drawmapscale(-0., 35.8, -3.25, 39.5, 500, fontsize = 14)
 inertie_totale = 0
 
-for x in result.collect():
+for x in dataset:
     x_norm = (x[1:]-means)/stds
     eucli_dist = [.0]*K
     for k in range(K):
